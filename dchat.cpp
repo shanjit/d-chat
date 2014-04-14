@@ -1,5 +1,6 @@
 #include <iostream>
 #include <thread>
+#include <vector>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -19,6 +20,70 @@ using namespace std;
 char operating_mode;
 char username[16];
 
+
+
+// --- global datastructures --- //
+
+// --- list of nodes in the group --- //
+class node_information
+{
+public:
+	struct sockaddr_in address; // stores socket information; ip, port
+	bool status; // active or inactive
+};
+vector<node_information> nodelist;
+
+// --- send message queue --- //
+class sent_message_information
+{
+	char message[256];
+	int acknowledgement number;
+	int sequence number;
+};
+
+
+// --- unacknowledged message queue --- //
+
+
+// --- receive queue --- //
+
+
+// --- display queue --- //
+
+
+// --- thread handling sending of data --- //
+void send_function()
+{
+
+}
+
+// --- thread handling reciept of data --- //
+void recieve_function()
+{
+	if(operating_mode == LEADER)
+	{
+		
+
+	}
+	else if(operating_mode == OTHER)
+	{
+
+	}
+}
+
+// --- thread handling heartbeat --- //
+void heartbeat_function()
+{
+
+}
+
+// --- thread handling display --- //
+void display_function()
+{
+
+}
+
+// --- main thread --- //
 int main(int argc, char *argv[])
 {
 	if(argc<2)
@@ -91,6 +156,7 @@ int main(int argc, char *argv[])
     	// --- print out initialization status --- //
     	inet_ntop(AF_INET, &leaderaddr.sin_addr, servip, 20);
     	cout << argv[1] << " started a new chat, listening on " << servip << ":" << ntohs(leaderaddr.sin_port) << endl;
+    	nodelist.push_back(leaderaddr);
 	}
 	else if(operating_mode == OTHER)
 	{
@@ -121,6 +187,22 @@ int main(int argc, char *argv[])
     	inet_ntop(AF_INET, &leaderaddr.sin_addr, servip, 20);
     	inet_ntop(AF_INET, &cliaddr.sin_addr, cliip, 20);
     	cout << argv[1] << " joining a new chat on " << servip << ":" << ntohs(leaderaddr.sin_port) << ", listening on " << cliip << ":" << ntohs(cliaddr.sin_port) << endl;
+		
+		// join existing chat code here //
+
 	}
+
+	// --- create threads for sending and recieving data, heartbeat thread --- //
+	thread send_thread (send_function);
+	thread recieve_thread (recieve_function);
+	thread heartbeat_thread (heartbeat_function);
+	thread display_thread (display_function);
+
+	// --- join threads to main thread --- //
+	send_thread.join();
+	recieve_thread.join();
+	heartbeat_thread.join();
+	display_thread.join();
+
 	return 0;
 }
