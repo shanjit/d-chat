@@ -1,3 +1,9 @@
+/*
+to do:
+1. remove busy waiting from parse function thread
+
+*/
+
 #include <iostream>
 #include <thread>
 #include <vector>
@@ -82,11 +88,25 @@ void recieve_function()
 		n = recvfrom(sockfd, mesg, BUFLEN, 0, (SA *)&nodeaddr, &len);
 		message_information message;
 		message.address = nodeaddr;
-		strcpy(message.packet, mesg);
+		strncpy(message.packet, mesg, strlen(mesg));
 		recieve_message_queue_mtx.lock();
 		recieve_message_queue.push(message);
 		recieve_message_queue_mtx.unlock();
 		memset(mesg, 0, BUFLEN);
+	}
+}
+
+// --- thread handling parsing of recieved data ---//
+void parse_function()
+{
+	
+	for(;;)
+	{
+		while(recieve_message_queue.empty());
+		recieve_message_queue_mtx.lock();
+		recieve_message_queue.pop();
+		cout << "message popped" << endl;
+		recieve_message_queue_mtx.unlock();
 	}
 }
 
@@ -227,6 +247,7 @@ int main(int argc, char *argv[])
 	// --- create threads for sending and recieving data, heartbeat thread --- //
 	thread send_thread (send_function);
 	thread recieve_thread (recieve_function);
+	thread parse_thread (parse_function);
 	thread heartbeat_thread (heartbeat_function);
 	thread display_thread (display_function);
 
@@ -235,6 +256,7 @@ int main(int argc, char *argv[])
 	recieve_thread.join();
 	heartbeat_thread.join();
 	display_thread.join();
+	parse_thread.join();
 
 	return 0;
 }
