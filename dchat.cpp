@@ -99,14 +99,25 @@ void recieve_function()
 // --- thread handling parsing of recieved data ---//
 void parse_function()
 {
-	
+	message_information message;
+	struct app_packet *packet;
 	for(;;)
 	{
-		while(recieve_message_queue.empty());
+		while(recieve_message_queue.empty()); // wait until something is added
+												// this needs to be removed
 		recieve_message_queue_mtx.lock();
+		message = recieve_message_queue.front();
 		recieve_message_queue.pop();
-		cout << "message popped" << endl;
 		recieve_message_queue_mtx.unlock();
+		packet = (struct app_packet *)message.packet;
+
+		// start parsing packet based on control_seq number
+
+		cout << packet->control_seq << endl;
+		cout << packet->seq_number << endl;
+		cout << packet->ack_number << endl;
+		cout << packet->payload << endl;
+		//cout << packet->payload;
 	}
 }
 
@@ -231,16 +242,6 @@ int main(int argc, char *argv[])
     	inet_ntop(AF_INET, &cliaddr.sin_addr, cliip, 20);
     	cout << argv[1] << " joining a new chat on " << servip << ":" << ntohs(leaderaddr.sin_port) << ", listening on " << cliip << ":" << ntohs(cliaddr.sin_port) << endl;
 		
-		// join existing chat code here //
-    	/*char sendpacket[BUFLEN];
-    	struct app_packet *packet = (struct app_packet *)packet;
-    	packet->control_seq = 10;
-    	packet->seq_number = 1;
-    	packet->ack_number = 1;
-    	strcpy(packet->payload, username);
-
-    	// send control message to leader telling I am new to the group //
-    	sendto(sockfd, sendpacket, strlen(sendpacket), 0, (SA *) &leaderaddr, sizeof(leaderaddr));*/
 
 	}
 
