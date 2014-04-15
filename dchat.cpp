@@ -1,6 +1,7 @@
 #include <iostream>
 #include <thread>
 #include <vector>
+#include <queue>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -17,36 +18,47 @@ using namespace std;
 
 #define BUFLEN 512
 
+int sockfd;
 char operating_mode;
 char username[16];
 
-
-
 // --- global datastructures --- //
+
+// --- application layer packet layout --- //
+struct app_packet
+{
+	u_char control_seq;
+	u_char seq_number;
+	u_char ack_number;
+	char payload[256];
+};
 
 // --- list of nodes in the group --- //
 class node_information
 {
-public:
+	public:
 	struct sockaddr_in address; // stores socket information; ip, port
 	bool status; // active or inactive
 };
 vector<node_information> nodelist;
+mutex nodelist_mtx;
 
 // --- send message queue --- //
-class sent_message_information
+class message_information
 {
-	char message[256];
-	int acknowledgement number;
-	int sequence number;
+	public:
+	struct sockaddr_in address;
+	char packet[BUFLEN];
 };
-
+queue<message_information> send_message_queue;
+mutex send_message_queue_mtx;
 
 // --- unacknowledged message queue --- //
 
 
-// --- receive queue --- //
-
+// --- receive message queue --- //
+queue<message_information> recieve_message_queue;
+mutex recieve_message_queue_mtx;
 
 // --- display queue --- //
 
@@ -60,14 +72,21 @@ void send_function()
 // --- thread handling reciept of data --- //
 void recieve_function()
 {
-	if(operating_mode == LEADER)
+	int n;
+	struct sockaddr_in nodeaddr;
+	socklen_t len;
+	len = sizeof(nodeaddr);
+	char mesg[BUFLEN];
+	for(;;)
 	{
-		
-
-	}
-	else if(operating_mode == OTHER)
-	{
-
+		n = recvfrom(sockfd, mesg, BUFLEN, 0, (SA *)&nodeaddr, &len);
+		message_information message;
+		message.address = nodeaddr;
+		strcpy(message.packet, mesg);
+		recieve_message_queue_mtx.lock();
+		recieve_message_queue.push(message);
+		recieve_message_queue_mtx.unlock();
+		memset(mesg, 0, BUFLEN);
 	}
 }
 
@@ -136,7 +155,6 @@ int main(int argc, char *argv[])
     close(sock);
 
     // --- create and bind socket for communication --- //
-	int sockfd;
 	char datagram[BUFLEN];
 	struct sockaddr_in cliaddr, leaderaddr;
 
@@ -156,7 +174,12 @@ int main(int argc, char *argv[])
     	// --- print out initialization status --- //
     	inet_ntop(AF_INET, &leaderaddr.sin_addr, servip, 20);
     	cout << argv[1] << " started a new chat, listening on " << servip << ":" << ntohs(leaderaddr.sin_port) << endl;
-    	nodelist.push_back(leaderaddr);
+    	node_information node_info;
+    	node_info.address = leaderaddr;
+    	node_info.status = true;
+    	nodelist_mtx.lock();
+    	nodelist.push_back(node_info); // add leader to node list
+    	nodelist_mtx.unlock();
 	}
 	else if(operating_mode == OTHER)
 	{
@@ -189,6 +212,15 @@ int main(int argc, char *argv[])
     	cout << argv[1] << " joining a new chat on " << servip << ":" << ntohs(leaderaddr.sin_port) << ", listening on " << cliip << ":" << ntohs(cliaddr.sin_port) << endl;
 		
 		// join existing chat code here //
+    	/*char sendpacket[BUFLEN];
+    	struct app_packet *packet = (struct app_packet *)packet;
+    	packet->control_seq = 10;
+    	packet->seq_number = 1;
+    	packet->ack_number = 1;
+    	strcpy(packet->payload, username);
+
+    	// send control message to leader telling I am new to the group //
+    	sendto(sockfd, sendpacket, strlen(sendpacket), 0, (SA *) &leaderaddr, sizeof(leaderaddr));*/
 
 	}
 
