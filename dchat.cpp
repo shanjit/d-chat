@@ -67,11 +67,26 @@ queue<message_information> recieve_message_queue;
 mutex recieve_message_queue_mtx;
 
 // --- display queue --- //
-
+struct display_content
+{
+	char message_contents[256];
+};
+queue<display_content> display_message_queue;
+mutex display_message_queue_mtx;
 
 // --- thread handling sending of data --- //
 void send_function()
 {
+	message_information message;
+	for(;;)
+	{
+		while(send_message_queue.empty());
+		send_message_queue_mtx.lock();
+		message = send_message_queue.front();
+		send_message_queue.pop();
+		send_message_queue_mtx.unlock();
+		while(sendto(sockfd, message.packet, strlen(message.packet), 0, (SA *) &message.address, sizeof(message.address)) < 0);
+	}
 
 }
 
@@ -93,31 +108,75 @@ void recieve_function()
 		recieve_message_queue.push(message);
 		recieve_message_queue_mtx.unlock();
 		memset(mesg, 0, BUFLEN);
+		memset(&message, 0, sizeof(class message_information));
 	}
 }
 
 // --- thread handling parsing of recieved data ---//
 void parse_function()
 {
-	message_information message;
-	struct app_packet *packet;
+	message_information read_message;
+	struct app_packet *read_packet;	
+
 	for(;;)
 	{
 		while(recieve_message_queue.empty()); // wait until something is added
-												// this needs to be removed
+											
+		
 		recieve_message_queue_mtx.lock();
-		message = recieve_message_queue.front();
+		read_message = recieve_message_queue.front();
 		recieve_message_queue.pop();
 		recieve_message_queue_mtx.unlock();
-		packet = (struct app_packet *)message.packet;
+		read_packet = (struct app_packet *)read_message.packet;
 
 		// start parsing packet based on control_seq number
 
-		cout << packet->control_seq << endl;
+		switch(read_packet->control_seq)
+		{
+			case 10:	if(operating_mode == LEADER)
+						{
+							struct message_information message;
+							char raw_packet[BUFLEN];
+							struct app_packet *packet = (struct app_packet *)raw_packet;
+							memset(raw_packet, 0, BUFLEN);
+							packet->control_seq = 20;
+							packet->seq_number = 100;
+							packet->ack_number = 100;
+							sprintf(packet->payload, "%s joined chat", read_packet->payload);
+							strncpy(message.packet, raw_packet, strlen(raw_packet));
+							for(int i = 1 ; i < nodelist.size() ; i++)
+							{
+								message.address = nodelist[i].address;
+								send_message_queue_mtx.lock();
+								send_message_queue.push(message);
+								send_message_queue_mtx.unlock();
+							}
+							display_content data;
+							strncpy(data.message_contents, packet->payload, strlen(packet->payload));
+							display_message_queue_mtx.lock();
+							display_message_queue.push(data);
+							display_message_queue_mtx.unlock();
+
+							node_information node_info;
+					    	node_info.address = read_message.address;
+					    	node_info.status = true;
+					    	nodelist_mtx.lock();
+					    	nodelist.push_back(node_info); // add new member to node list
+					    	nodelist_mtx.unlock();		
+						}
+						break;
+			case 20:	display_content data;
+						strncpy(data.message_contents, read_packet->payload, strlen(read_packet->payload));
+						display_message_queue_mtx.lock();
+						display_message_queue.push(data);
+						display_message_queue_mtx.unlock();
+						break;
+		}
+		/*cout << packet->control_seq << endl;
 		cout << packet->seq_number << endl;
 		cout << packet->ack_number << endl;
 		cout << packet->payload << endl;
-		//cout << packet->payload;
+		//cout << packet->payload;*/
 	}
 }
 
@@ -130,6 +189,16 @@ void heartbeat_function()
 // --- thread handling display --- //
 void display_function()
 {
+	display_content data;
+	for(;;)
+	{
+		while(display_message_queue.empty());
+		display_message_queue_mtx.lock();
+		data = display_message_queue.front();
+		display_message_queue.pop();
+		cout << data.message_contents << endl;
+		display_message_queue_mtx.unlock();
+	}
 
 }
 
@@ -242,6 +311,19 @@ int main(int argc, char *argv[])
     	inet_ntop(AF_INET, &cliaddr.sin_addr, cliip, 20);
     	cout << argv[1] << " joining a new chat on " << servip << ":" << ntohs(leaderaddr.sin_port) << ", listening on " << cliip << ":" << ntohs(cliaddr.sin_port) << endl;
 		
+		struct message_information message;
+		char raw_packet[BUFLEN];
+		struct app_packet *packet = (struct app_packet *)raw_packet;
+		memset(raw_packet, 0, BUFLEN);
+		packet->control_seq = 10;
+		packet->seq_number = 100;
+		packet->ack_number = 100;
+		strcpy(packet->payload, argv[1]);
+		message.address = leaderaddr;
+		strncpy(message.packet, raw_packet, strlen(raw_packet));
+		send_message_queue_mtx.lock();
+		send_message_queue.push(message);
+		send_message_queue_mtx.unlock();
 
 	}
 
