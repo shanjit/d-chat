@@ -135,7 +135,7 @@ void parse_function()
 		{
 			case 10:	if(operating_mode == LEADER)
 						{
-							struct message_information message;
+							message_information message;
 							char raw_packet[BUFLEN];
 							struct app_packet *packet = (struct app_packet *)raw_packet;
 							memset(raw_packet, 0, BUFLEN);
@@ -143,7 +143,7 @@ void parse_function()
 							packet->seq_number = 100;
 							packet->ack_number = 100;
 							sprintf(packet->payload, "%s joined chat", read_packet->payload);
-							strncpy(message.packet, raw_packet, strlen(raw_packet));
+							strcpy(message.packet, raw_packet);
 							for(int i = 1 ; i < nodelist.size() ; i++)
 							{
 								message.address = nodelist[i].address;
@@ -152,7 +152,7 @@ void parse_function()
 								send_message_queue_mtx.unlock();
 							}
 							display_content data;
-							strncpy(data.message_contents, packet->payload, strlen(packet->payload));
+							strcpy(data.message_contents, packet->payload);
 							display_message_queue_mtx.lock();
 							display_message_queue.push(data);
 							display_message_queue_mtx.unlock();
@@ -162,16 +162,20 @@ void parse_function()
 					    	node_info.status = true;
 					    	nodelist_mtx.lock();
 					    	nodelist.push_back(node_info); // add new member to node list
-					    	nodelist_mtx.unlock();		
+					    	nodelist_mtx.unlock();	
 						}
 						break;
+
 			case 20:	display_content data;
-						strncpy(data.message_contents, read_packet->payload, strlen(read_packet->payload));
+						strcpy(data.message_contents, read_packet->payload);
 						display_message_queue_mtx.lock();
 						display_message_queue.push(data);
 						display_message_queue_mtx.unlock();
 						break;
 		}
+
+		//memset(&read_message, 0, sizeof(class message_information));
+		//memset(read_packet, 0, sizeof(struct app_packet));
 		/*cout << packet->control_seq << endl;
 		cout << packet->seq_number << endl;
 		cout << packet->ack_number << endl;
@@ -198,8 +202,32 @@ void display_function()
 		display_message_queue.pop();
 		cout << data.message_contents << endl;
 		display_message_queue_mtx.unlock();
-	}
 
+	}
+}
+
+// --- thread handling user input --- //
+void user_function()
+{
+	char chat_message[256];
+	for(;;)
+	{
+		cin.getline(chat_message, 256);
+		message_information message;
+		char raw_packet[BUFLEN];
+		struct app_packet *packet = (struct app_packet *)raw_packet;
+		memset(raw_packet, 0, BUFLEN);
+		packet->control_seq = 20;
+		packet->seq_number = 100;
+		packet->ack_number = 100;
+		sprintf(packet->payload, "%s", chat_message);
+		strcpy(message.packet, raw_packet);
+		message.address = nodelist[0].address;
+		send_message_queue_mtx.lock();
+		send_message_queue.push(message);
+		send_message_queue_mtx.unlock();
+		memset(chat_message, 0, 256);
+	}
 }
 
 // --- main thread --- //
@@ -311,7 +339,7 @@ int main(int argc, char *argv[])
     	inet_ntop(AF_INET, &cliaddr.sin_addr, cliip, 20);
     	cout << argv[1] << " joining a new chat on " << servip << ":" << ntohs(leaderaddr.sin_port) << ", listening on " << cliip << ":" << ntohs(cliaddr.sin_port) << endl;
 		
-		struct message_information message;
+		message_information message;
 		char raw_packet[BUFLEN];
 		struct app_packet *packet = (struct app_packet *)raw_packet;
 		memset(raw_packet, 0, BUFLEN);
@@ -333,6 +361,7 @@ int main(int argc, char *argv[])
 	thread parse_thread (parse_function);
 	thread heartbeat_thread (heartbeat_function);
 	thread display_thread (display_function);
+	thread user_interface (user_function);
 
 	// --- join threads to main thread --- //
 	send_thread.join();
