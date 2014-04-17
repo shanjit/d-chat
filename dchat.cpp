@@ -4,6 +4,8 @@ to do:
 
 */
 
+//----------------------------------------------------------------------------------------//
+
 #include <iostream>
 #include <thread>
 #include <vector>
@@ -15,8 +17,13 @@ to do:
 #include <netdb.h>
 #include <unistd.h>
 
+//----------------------------------------------------------------------------------------//
+
 using namespace std;
 
+//----------------------------------------------------------------------------------------//
+
+// constants for mode identification
 #define LEADER 100
 #define OTHER 101
 
@@ -24,55 +31,97 @@ using namespace std;
 
 #define BUFLEN 512
 
-int sockfd;
-char operating_mode;
-char username[16];
+//----------------------------------------------------------------------------------------//
+
+// interface socket
+int sockfd; 
+
+// mode telling LEADER or OTHER
+char operating_mode; 
+
+//username
+char username[16]; 
+
+//----------------------------------------------------------------------------------------//
 
 // --- global datastructures --- //
 
+//----------------------------------------------------------------------------------------//
+
 // --- application layer packet layout --- //
-struct app_packet
+class app_packet
 {
+public:
 	u_char control_seq;
 	u_char seq_number;
 	u_char ack_number;
 	char payload[256];
 };
 
+//----------------------------------------------------------------------------------------//
+
 // --- list of nodes in the group --- //
 class node_information
 {
-	public:
+public:
 	struct sockaddr_in address; // stores socket information; ip, port
 	bool status; // active or inactive
 };
-vector<node_information> nodelist;
+
+// vector data structure to hold information of nodes
+vector<node_information> nodelist; 
+
+// mutex to achieve mutual exclusion when accessing nodelist
 mutex nodelist_mtx;
+
+//----------------------------------------------------------------------------------------//
 
 // --- send message queue --- //
 class message_information
 {
-	public:
+public:
 	struct sockaddr_in address;
 	char packet[BUFLEN];
 };
+
+// queue data structure to store messages to send
 queue<message_information> send_message_queue;
+
+// mutex to acheive mutual exclusion when accessing send queue
 mutex send_message_queue_mtx;
+
+//----------------------------------------------------------------------------------------//
 
 // --- unacknowledged message queue --- //
 
+// to be filled 
+
+//----------------------------------------------------------------------------------------//
 
 // --- receive message queue --- //
+
+// queue data structure to store received messages
 queue<message_information> recieve_message_queue;
+
+// mutex to achieve mutual exclusion when accessing receive queue
 mutex recieve_message_queue_mtx;
 
+//----------------------------------------------------------------------------------------//
+
 // --- display queue --- //
-struct display_content
+class display_content
 {
+public:
 	char message_contents[256];
 };
+
+// queue data structure to store messages for display
 queue<display_content> display_message_queue;
+
+// mutex to acheive mutual exclsuion when accessing display queue
 mutex display_message_queue_mtx;
+
+//----------------------------------------------------------------------------------------//
 
 // --- thread handling sending of data --- //
 void send_function()
@@ -116,7 +165,7 @@ void recieve_function()
 void parse_function()
 {
 	message_information read_message;
-	struct app_packet *read_packet;	
+	app_packet *read_packet;	
 
 	for(;;)
 	{
@@ -137,7 +186,7 @@ void parse_function()
 						{
 							message_information message;
 							char raw_packet[BUFLEN];
-							struct app_packet *packet = (struct app_packet *)raw_packet;
+							app_packet *packet = (app_packet *)raw_packet;
 							memset(raw_packet, 0, BUFLEN);
 							packet->control_seq = 20;
 							packet->seq_number = 100;
@@ -215,12 +264,12 @@ void user_function()
 		cin.getline(chat_message, 256);
 		message_information message;
 		char raw_packet[BUFLEN];
-		struct app_packet *packet = (struct app_packet *)raw_packet;
+		app_packet *packet = (app_packet *)raw_packet;
 		memset(raw_packet, 0, BUFLEN);
 		packet->control_seq = 20;
 		packet->seq_number = 100;
 		packet->ack_number = 100;
-		sprintf(packet->payload, "%s", chat_message);
+		sprintf(packet->payload, "%s: %s", username, chat_message);
 		strcpy(message.packet, raw_packet);
 		message.address = nodelist[0].address;
 		send_message_queue_mtx.lock();
@@ -341,7 +390,7 @@ int main(int argc, char *argv[])
 		
 		message_information message;
 		char raw_packet[BUFLEN];
-		struct app_packet *packet = (struct app_packet *)raw_packet;
+		app_packet *packet = (app_packet *)raw_packet;
 		memset(raw_packet, 0, BUFLEN);
 		packet->control_seq = 10;
 		packet->seq_number = 100;
