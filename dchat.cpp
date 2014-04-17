@@ -166,6 +166,7 @@ void parse_function()
 {
 	message_information read_message;
 	app_packet *read_packet;	
+	int nodelist_ptr = 0;
 
 	for(;;)
 	{
@@ -187,11 +188,15 @@ void parse_function()
 							message_information message;
 							char raw_packet[BUFLEN];
 							app_packet *packet = (app_packet *)raw_packet;
+							char servip[20];
+							struct sockaddr_in node_address;
 							memset(raw_packet, 0, BUFLEN);
 							packet->control_seq = 20;
 							packet->seq_number = 100;
 							packet->ack_number = 100;
-							sprintf(packet->payload, "%s joined chat", read_packet->payload);
+							node_address = read_message.address;
+							inet_ntop(AF_INET, &node_address.sin_addr, servip, 20);
+							sprintf(packet->payload, "NOTICE %s joined chat on %s:%d", read_packet->payload, servip, ntohs(node_address.sin_port));
 							strcpy(message.packet, raw_packet);
 							for(int i = 1 ; i < nodelist.size() ; i++)
 							{
@@ -212,15 +217,73 @@ void parse_function()
 					    	nodelist_mtx.lock();
 					    	nodelist.push_back(node_info); // add new member to node list
 					    	nodelist_mtx.unlock();	
+
+					    	
+					    	memset(raw_packet, 0, BUFLEN);
+					    	packet->control_seq = 11;
+							packet->seq_number = 100;
+							packet->ack_number = 100;
+							strcpy(message.packet, raw_packet);
+							message.address = read_message.address;								
+							send_message_queue_mtx.lock();
+							send_message_queue.push(message);
+							send_message_queue_mtx.unlock();
+					    	for(int i = 0 ; i < nodelist.size() ; i++)
+					    	{
+					    		memset(raw_packet, 0, BUFLEN);
+					    		packet->control_seq = 12;
+								packet->seq_number = 100;
+								packet->ack_number = 100;
+								node_address = nodelist[i].address;
+								inet_ntop(AF_INET, &node_address.sin_addr, servip, 20);
+								sprintf(packet->payload, "%s:%d", servip, ntohs(node_address.sin_port));
+								strcpy(message.packet, raw_packet);
+								message.address = read_message.address;
+								send_message_queue_mtx.lock();
+								send_message_queue.push(message);
+								send_message_queue_mtx.unlock();
+					    	}
+
 						}
 						break;
 
-			case 20:	display_content data;
+			case 20:	if(operating_mode == LEADER)
+						{
+							for(int i = 1 ; i < nodelist.size() ; i++)
+							{
+								read_message.address = nodelist[i].address;
+								send_message_queue_mtx.lock();
+								send_message_queue.push(read_message);
+								send_message_queue_mtx.unlock();
+							}
+							
+						}
+						display_content data;
 						strcpy(data.message_contents, read_packet->payload);
 						display_message_queue_mtx.lock();
 						display_message_queue.push(data);
 						display_message_queue_mtx.unlock();
 						break;
+
+			case 11:	nodelist.clear();
+						cout << "pointer set to 0" << endl;
+						break;
+
+			case 12:	char servip[20];
+						char port[20];
+						node_information node_info;
+						struct sockaddr_in address;
+						sscanf(read_packet->payload, "%20[^:]:%s", servip, port);
+						inet_pton(AF_INET, servip, &address.sin_addr);
+						address.sin_port = htons(atoi(port));
+						node_info.address = address;
+						node_info.status = true;
+						nodelist_mtx.lock();
+					    nodelist.push_back(node_info); // add new member to node list
+					    nodelist_mtx.unlock();	
+						cout << servip << ":" << port << endl;
+						break;
+
 		}
 
 		//memset(&read_message, 0, sizeof(class message_information));
