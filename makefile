@@ -1,2 +1,2 @@
 all: dchat.cpp
-	g++ -o dchat dchat.cpp
+	g++ -std=gnu++11 -o dchat dchat.cpp

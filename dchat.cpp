@@ -16,7 +16,9 @@ to do:
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <unistd.h>
-
+#include <stdlib.h>
+#include <mutex>
+#include <string.h>
 //----------------------------------------------------------------------------------------//
 
 using namespace std;
