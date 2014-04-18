@@ -418,8 +418,8 @@ int main(int argc, char *argv[])
     	cout << argv[1] << " started a new chat, listening on " << servip << ":" << ntohs(leaderaddr.sin_port) << endl;
     	node_information node_info;
     	node_info.address = leaderaddr;
-    	node_info.status = true;
-    	nodelist_mtx.lock();
+    	node_info.status = true;    	
+nodelist_mtx.lock();
     	nodelist.push_back(node_info); // add leader to node list
     	nodelist_mtx.unlock();
 	}

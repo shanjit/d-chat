@@ -1,2 +1,2 @@
 all: dchat.cpp
-	g++ -std=gnu++11 -o dchat dchat.cpp
+	g++ -std=c++11 -o dchat dchat.cpp -pthread
