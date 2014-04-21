@@ -206,7 +206,6 @@ void parse_function()
 		{
 			case 10:	if(operating_mode == LEADER)
 						{
-							cout<<"Leader got the joininig message";
 							message_information message;
 							char raw_packet[BUFLEN];
 							app_packet *packet = (app_packet *)raw_packet;
