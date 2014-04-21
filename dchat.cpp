@@ -242,7 +242,6 @@ void parse_function()
 					    	node_info.address = read_message.address;
 					    	node_info.status = true;
 					    	strcpy(node_info.nodename, read_packet->payload);
-					    	cout<<node_info.nodename;
 					    	nodelist_mtx.lock();
 					    	nodelist.push_back(node_info); // add new member to node list
 					    	nodelist_mtx.unlock();	
@@ -508,13 +507,8 @@ int main(int argc, char *argv[])
 		packet->ack_number = 100;
 		strcpy(packet->payload, argv[1]);
 		message.address = leaderaddr;
-		strncpy(message.packet, raw_packet, strlen(raw_packet));
-		while(sendto(sockfd, message.packet, strlen(message.packet), 0, (SA *) &message.address, sizeof(message.address)) < 0);
-/*		send_message_queue_mtx.lock();
-		send_message_queue.push(message);
-		send_message_queue_mtx.unlock();
-		send_message_cv.notify_all();*/
-		
+		strcpy(message.packet, raw_packet);
+		while(sendto(sockfd, message.packet, strlen(message.packet), 0, (SA *) &message.address, sizeof(message.address)) < 0);	
 	}
 
 
