@@ -1,7 +1,9 @@
 /*
 to do:
-1. remove busy waiting from parse function thread
-
+1. ACK + Sequencing + New Thread
+2. HeartBeat + Failure detection 
+3. Leader election
+4. 
 */
 
 //----------------------------------------------------------------------------------------//
@@ -34,6 +36,7 @@ using namespace std;
 
 #define BUFLEN 512
 
+#define NAMELEN 16
 //----------------------------------------------------------------------------------------//
 
 // interface socket
@@ -43,7 +46,7 @@ int sockfd;
 char operating_mode; 
 
 //username
-char username[16]; 
+char username[NAMELEN]; 
 
 //----------------------------------------------------------------------------------------//
 
@@ -69,6 +72,7 @@ class node_information
 public:
 	struct sockaddr_in address; // stores socket information; ip, port
 	bool status; // active or inactive
+	char nodename[NAMELEN];
 };
 
 // vector data structure to hold information of nodes
@@ -237,6 +241,8 @@ void parse_function()
 							node_information node_info;
 					    	node_info.address = read_message.address;
 					    	node_info.status = true;
+					    	strcpy(node_info.nodename, read_packet->payload);
+					    	cout<<node_info.nodename;
 					    	nodelist_mtx.lock();
 					    	nodelist.push_back(node_info); // add new member to node list
 					    	nodelist_mtx.unlock();	
@@ -261,7 +267,7 @@ void parse_function()
 								packet->ack_number = 100;
 								node_address = nodelist[i].address;
 								inet_ntop(AF_INET, &node_address.sin_addr, servip, 20);
-								sprintf(packet->payload, "%s:%d", servip, ntohs(node_address.sin_port));
+								sprintf(packet->payload, "%s:%d:%s", servip, ntohs(node_address.sin_port), nodelist[i].nodename);
 								strcpy(message.packet, raw_packet);
 								message.address = read_message.address;
 								send_message_queue_mtx.lock();
@@ -299,13 +305,15 @@ void parse_function()
 
 			case 12:	char servip[20];
 						char port[20];
+						char nodename[NAMELEN];
 						node_information node_info;
 						struct sockaddr_in address;
-						sscanf(read_packet->payload, "%20[^:]:%s", servip, port);
+						sscanf(read_packet->payload, "%20[^:]:%s:%s", servip, port, nodename);
 						inet_pton(AF_INET, servip, &address.sin_addr);
 						address.sin_port = htons(atoi(port));
 						node_info.address = address;
 						node_info.status = true;
+						strcpy(node_info.nodename, nodename);
 						nodelist_mtx.lock();
 					    nodelist.push_back(node_info); // add new member to node list
 					    nodelist_mtx.unlock();	
@@ -456,7 +464,8 @@ int main(int argc, char *argv[])
     	node_information node_info;
     	node_info.address = leaderaddr;
     	node_info.status = true;    	
-nodelist_mtx.lock();
+    	strcpy(node_info.nodename, argv[1]);
+		nodelist_mtx.lock();
     	nodelist.push_back(node_info); // add leader to node list
     	nodelist_mtx.unlock();
 	}
