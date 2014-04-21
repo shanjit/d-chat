@@ -19,6 +19,7 @@ to do:
 #include <stdlib.h>
 #include <mutex>
 #include <string.h>
+#include <condition_variable>
 //----------------------------------------------------------------------------------------//
 
 using namespace std;
@@ -92,6 +93,8 @@ queue<message_information> send_message_queue;
 // mutex to acheive mutual exclusion when accessing send queue
 mutex send_message_queue_mtx;
 
+
+
 //----------------------------------------------------------------------------------------//
 
 // --- unacknowledged message queue --- //
@@ -103,10 +106,10 @@ mutex send_message_queue_mtx;
 // --- receive message queue --- //
 
 // queue data structure to store received messages
-queue<message_information> recieve_message_queue;
+queue<message_information> receive_message_queue;
 
 // mutex to achieve mutual exclusion when accessing receive queue
-mutex recieve_message_queue_mtx;
+mutex receive_message_queue_mtx;
 
 //----------------------------------------------------------------------------------------//
 
@@ -123,27 +126,37 @@ queue<display_content> display_message_queue;
 // mutex to acheive mutual exclsuion when accessing display queue
 mutex display_message_queue_mtx;
 
+condition_variable send_message_cv;
+
+condition_variable receive_message_cv;
+
+condition_variable display_message_cv;
+
 //----------------------------------------------------------------------------------------//
 
 // --- thread handling sending of data --- //
 void send_function()
-{
+{	
 	message_information message;
 	for(;;)
 	{
-		while(send_message_queue.empty());
-		send_message_queue_mtx.lock();
+		unique_lock<mutex> send_lk(send_message_queue_mtx);
+		while(send_message_queue.empty())
+		{
+			send_message_cv.wait(send_lk);
+		}
 		message = send_message_queue.front();
 		send_message_queue.pop();
 		send_message_queue_mtx.unlock();
 		while(sendto(sockfd, message.packet, strlen(message.packet), 0, (SA *) &message.address, sizeof(message.address)) < 0);
+		
 	}
 
 }
 
 // --- thread handling reciept of data --- //
-void recieve_function()
-{
+void receive_function()
+{	
 	int n;
 	struct sockaddr_in nodeaddr;
 	socklen_t len;
@@ -155,30 +168,36 @@ void recieve_function()
 		message_information message;
 		message.address = nodeaddr;
 		strncpy(message.packet, mesg, strlen(mesg));
-		recieve_message_queue_mtx.lock();
-		recieve_message_queue.push(message);
-		recieve_message_queue_mtx.unlock();
+		receive_message_queue_mtx.lock();
+		receive_message_queue.push(message);
+		receive_message_queue_mtx.unlock();
+		receive_message_cv.notify_all();
 		memset(mesg, 0, BUFLEN);
 		memset(&message, 0, sizeof(class message_information));
 	}
 }
 
-// --- thread handling parsing of recieved data ---//
+// --- thread handling parsing of received data ---//
 void parse_function()
-{
+{	
 	message_information read_message;
 	app_packet *read_packet;	
 	int nodelist_ptr = 0;
 
 	for(;;)
 	{
-		while(recieve_message_queue.empty()); // wait until something is added
-											
+		// while(receive_message_queue.empty()); // wait until something is added
+	
+		unique_lock<mutex> receive_lk(receive_message_queue_mtx);
 		
-		recieve_message_queue_mtx.lock();
-		read_message = recieve_message_queue.front();
-		recieve_message_queue.pop();
-		recieve_message_queue_mtx.unlock();
+		while(receive_message_queue.empty())
+		{
+			receive_message_cv.wait(receive_lk);
+		}
+
+		read_message = receive_message_queue.front();
+		receive_message_queue.pop();
+		receive_message_queue_mtx.unlock();
 		read_packet = (struct app_packet *)read_message.packet;
 
 		// start parsing packet based on control_seq number
@@ -187,6 +206,7 @@ void parse_function()
 		{
 			case 10:	if(operating_mode == LEADER)
 						{
+							cout<<"Leader got the joininig message";
 							message_information message;
 							char raw_packet[BUFLEN];
 							app_packet *packet = (app_packet *)raw_packet;
@@ -206,12 +226,14 @@ void parse_function()
 								send_message_queue_mtx.lock();
 								send_message_queue.push(message);
 								send_message_queue_mtx.unlock();
+								send_message_cv.notify_all();
 							}
 							display_content data;
 							strcpy(data.message_contents, packet->payload);
 							display_message_queue_mtx.lock();
 							display_message_queue.push(data);
 							display_message_queue_mtx.unlock();
+							display_message_cv.notify_all();
 
 							node_information node_info;
 					    	node_info.address = read_message.address;
@@ -230,6 +252,8 @@ void parse_function()
 							send_message_queue_mtx.lock();
 							send_message_queue.push(message);
 							send_message_queue_mtx.unlock();
+							send_message_cv.notify_all();
+							
 					    	for(int i = 0 ; i < nodelist.size() ; i++)
 					    	{
 					    		memset(raw_packet, 0, BUFLEN);
@@ -244,6 +268,7 @@ void parse_function()
 								send_message_queue_mtx.lock();
 								send_message_queue.push(message);
 								send_message_queue_mtx.unlock();
+								send_message_cv.notify_all();
 					    	}
 
 						}
@@ -257,6 +282,7 @@ void parse_function()
 								send_message_queue_mtx.lock();
 								send_message_queue.push(read_message);
 								send_message_queue_mtx.unlock();
+								send_message_cv.notify_all();
 							}
 							
 						}
@@ -265,6 +291,7 @@ void parse_function()
 						display_message_queue_mtx.lock();
 						display_message_queue.push(data);
 						display_message_queue_mtx.unlock();
+						display_message_cv.notify_all();
 						break;
 
 			case 11:	nodelist.clear();
@@ -306,12 +333,18 @@ void heartbeat_function()
 
 // --- thread handling display --- //
 void display_function()
-{
+{	
 	display_content data;
 	for(;;)
 	{
-		while(display_message_queue.empty());
-		display_message_queue_mtx.lock();
+		//while(display_message_queue.empty());
+		unique_lock<mutex> display_lk(display_message_queue_mtx);
+		
+		while(display_message_queue.empty())
+		{
+			display_message_cv.wait(display_lk);
+		}
+//		display_message_queue_mtx.lock();
 		data = display_message_queue.front();
 		display_message_queue.pop();
 		cout << data.message_contents << endl;
@@ -322,7 +355,7 @@ void display_function()
 
 // --- thread handling user input --- //
 void user_function()
-{
+{	
 	char chat_message[256];
 	for(;;)
 	{
@@ -340,6 +373,7 @@ void user_function()
 		send_message_queue_mtx.lock();
 		send_message_queue.push(message);
 		send_message_queue_mtx.unlock();
+		send_message_cv.notify_all();
 		memset(chat_message, 0, 256);
 	}
 }
@@ -369,6 +403,10 @@ int main(int argc, char *argv[])
 		cout << " \t if connecting to group : " << argv[0] << " <name> <ip of member>:<port of member>" << endl;
 		return 0;
 	}
+
+
+
+
 
 	// --- find out default IP used for communication ---- //
 	const char* google_dns_server = "8.8.8.8";
@@ -409,7 +447,7 @@ int main(int argc, char *argv[])
 		memset((char *) &leaderaddr, 0, sizeof(leaderaddr));
 		leaderaddr.sin_family = AF_INET;
 		leaderaddr.sin_addr.s_addr = inet_addr(buffer);
-		leaderaddr.sin_port = htons(INADDR_ANY);
+		leaderaddr.sin_port = htons(40000);
 		// --- bind socket --- //
 		bind(sockfd, (SA *) &leaderaddr, sizeof(leaderaddr));
     	err = getsockname(sock, (SA *) &leaderaddr, &len);
@@ -463,26 +501,32 @@ nodelist_mtx.lock();
 		strcpy(packet->payload, argv[1]);
 		message.address = leaderaddr;
 		strncpy(message.packet, raw_packet, strlen(raw_packet));
-		send_message_queue_mtx.lock();
+		while(sendto(sockfd, message.packet, strlen(message.packet), 0, (SA *) &message.address, sizeof(message.address)) < 0);
+/*		send_message_queue_mtx.lock();
 		send_message_queue.push(message);
 		send_message_queue_mtx.unlock();
-
+		send_message_cv.notify_all();*/
+		
 	}
+
 
 	// --- create threads for sending and recieving data, heartbeat thread --- //
 	thread send_thread (send_function);
-	thread recieve_thread (recieve_function);
+	thread receive_thread (receive_function);
 	thread parse_thread (parse_function);
 	thread heartbeat_thread (heartbeat_function);
 	thread display_thread (display_function);
 	thread user_interface (user_function);
 
+
 	// --- join threads to main thread --- //
 	send_thread.join();
-	recieve_thread.join();
+	receive_thread.join();
 	heartbeat_thread.join();
 	display_thread.join();
 	parse_thread.join();
+
+
 
 	return 0;
 }
