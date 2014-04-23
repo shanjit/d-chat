@@ -22,6 +22,9 @@ to do:
 #include <mutex>
 #include <string.h>
 #include <condition_variable>
+#include <list>
+#include <typeinfo>
+//#include <stdint.h>
 //----------------------------------------------------------------------------------------//
 
 using namespace std;
@@ -58,12 +61,12 @@ char username[NAMELEN];
 class app_packet
 {
 public:
-	u_char control_seq;
-	u_char seq_number;
-	u_char ack_number;
+	uint8_t control_seq;
+	uint8_t seq_number;
+	uint8_t ack_number;
 	char payload[256];
-	u_char no_of_sent_times;
-	u_char symbol;
+	uint8_t no_of_sent_times;
+	uint8_t symbol;
 };
 
 //----------------------------------------------------------------------------------------//
@@ -100,9 +103,9 @@ queue<message_information> send_message_queue;
 // mutex to acheive mutual exclusion when accessing send queue
 mutex send_message_queue_mtx;
 
-queue<message_information> ack_message_queue;
+list<message_information> ack_message_list;
 
-mutex ack_message_queue_mtx;
+mutex ack_message_list_mtx;
 
 //----------------------------------------------------------------------------------------//
 
@@ -141,7 +144,7 @@ condition_variable receive_message_cv;
 
 condition_variable display_message_cv;
 
-u_char global_symbol=0; 
+uint8_t global_symbol=0; 
 mutex global_symbol_mtx;
 
 //----------------------------------------------------------------------------------------//
@@ -152,6 +155,7 @@ void send_function()
 	static message_information send_message;
 	static char send_raw_packet[BUFLEN];
 	static app_packet *send_packet;
+	
 	send_packet = (app_packet *)send_raw_packet;
 	send_packet = (struct app_packet *)send_message.packet;
 
@@ -168,10 +172,13 @@ void send_function()
 		send_message_queue_mtx.unlock();
 
 		global_symbol_mtx.lock();
-		send_packet->symbol = global_symbol++;
+		send_packet->symbol = global_symbol;
+		global_symbol = global_symbol + 0x1;
 		global_symbol_mtx.unlock();
-
-
+		//global_symbol++;
+		//printf("global symbol is: %hhx", global_symbol);
+		cout << endl;
+		uint8_t control_seq;
 		char *ch[512] = {send_message.packet};
 		*ch = (char *) send_packet;
 		// app_packet *ch1 = (app_packet *)ch;
@@ -183,9 +190,9 @@ void send_function()
 
 		//cout<<"Last message sent at: "<<send_message.last_sent_time<<endl;
 		cout << "message sent: " << n << endl;
-		ack_message_queue_mtx.lock();
-		ack_message_queue.push(send_message);
-		ack_message_queue_mtx.unlock();
+		ack_message_list_mtx.lock();
+		ack_message_list.push_back(send_message);
+		ack_message_list_mtx.unlock();
 
 	}
 
@@ -274,6 +281,7 @@ void parse_function()
 							send_packet->ack_number = read_packet->symbol+1;
 							send_packet->no_of_sent_times = 1;
 							send_message.address = read_message.address;
+							sprintf(send_packet->payload, "%d:%d:%d:%d", send_packet->seq_number, send_packet->ack_number, read_packet->symbol, send_packet->no_of_sent_times);
 							strcpy(send_message.packet, send_raw_packet);
 /*							send_message_queue_mtx.lock();
 							send_message_queue.push(send_message);
@@ -367,14 +375,15 @@ void parse_function()
 							send_packet->ack_number = read_packet->symbol+1;
 							send_packet->no_of_sent_times = 1;
 							send_message.address = read_message.address;
+							sprintf(send_packet->payload, "%d:%d:%d:%d", send_packet->seq_number, send_packet->ack_number, read_packet->symbol, send_packet->no_of_sent_times);							
 							strcpy(send_message.packet, send_raw_packet);
 /*							send_message_queue_mtx.lock();
 							send_message_queue.push(send_message);
 							send_message_queue_mtx.unlock();*/
 
+sprintf(send_packet->payload, "%d:%d:%d:%d", send_packet->seq_number, send_packet->ack_number, read_packet->symbol, send_packet->no_of_sent_times);
+
 							while(sendto(sockfd, send_message.packet, strlen(send_message.packet), 0, (SA *) &send_message.address, sizeof(send_message.address)) < 0);	
-
-
 
 							memset(&send_raw_packet, 0, sizeof(send_raw_packet));							
 							
@@ -424,11 +433,11 @@ void parse_function()
 							
 							cout <<"sending ack for code 20"<<endl;
 							send_packet->control_seq = 50;
-							send_packet->seq_number = 100;
+							send_packet->seq_number = 101;
 							send_packet->ack_number = read_packet->symbol+1;
 							send_packet->no_of_sent_times = 1;
 							send_message.address = read_message.address;
-							strcpy(send_message.packet, send_raw_packet);
+sprintf(send_packet->payload, "%d:%d:%d:%d", send_packet->seq_number, send_packet->ack_number, read_packet->symbol, send_packet->no_of_sent_times);							strcpy(send_message.packet, send_raw_packet);
 /*							send_message_queue_mtx.lock();
 							send_message_queue.push(send_message);
 							send_message_queue_mtx.unlock();*/
@@ -454,7 +463,7 @@ void parse_function()
 							send_packet->ack_number = read_packet->symbol+1;
 							send_packet->no_of_sent_times = 1;
 							send_message.address = read_message.address;
-							strcpy(send_message.packet, send_raw_packet);
+sprintf(send_packet->payload, "%d:%d:%d:%d", send_packet->seq_number, send_packet->ack_number, read_packet->symbol, send_packet->no_of_sent_times);							strcpy(send_message.packet, send_raw_packet);
 							while(sendto(sockfd, send_message.packet, strlen(send_message.packet), 0, (SA *) &send_message.address, sizeof(send_message.address)) < 0);	
 /*
 							send_message_queue_mtx.lock();
@@ -476,7 +485,7 @@ void parse_function()
 							send_packet->ack_number = read_packet->symbol+1;
 							send_packet->no_of_sent_times = 1;
 							send_message.address = read_message.address;
-							strcpy(send_message.packet, send_raw_packet);
+sprintf(send_packet->payload, "%d:%d:%d:%d", send_packet->seq_number, send_packet->ack_number, read_packet->symbol, send_packet->no_of_sent_times);							strcpy(send_message.packet, send_raw_packet);
 /*							send_message_queue_mtx.lock();
 							send_message_queue.push(send_message);
 							send_message_queue_mtx.unlock();*/
@@ -509,12 +518,12 @@ void parse_function()
 							send_packet->ack_number = read_packet->symbol+1;
 							send_packet->no_of_sent_times = 1;
 							send_message.address = read_message.address;
-							strcpy(send_message.packet, send_raw_packet);
+sprintf(send_packet->payload, "%d:%d:%d:%d", send_packet->seq_number, send_packet->ack_number, read_packet->symbol, send_packet->no_of_sent_times);							strcpy(send_message.packet, send_raw_packet);
 /*							send_message_queue_mtx.lock();
 							send_message_queue.push(send_message);
 							send_message_queue_mtx.unlock();
 */
-							
+
 							memset(&send_raw_packet, 0, sizeof(send_raw_packet));							
 						
 						cout <<"received packet of code 13"<< endl;
@@ -538,6 +547,36 @@ void parse_function()
 						break;
 
 			case 50: 	cout <<"ACK received, do nothing"<<endl;
+						
+						message_information ack_message;
+						char ack_raw_packet[BUFLEN];
+						app_packet *ack_packet;
+						ack_packet = (app_packet *)ack_raw_packet;
+						ack_packet = (struct app_packet *)ack_message.packet;
+
+						uint8_t *read_packet_seq_number;
+						uint8_t *read_packet_ack_number;
+						uint8_t *read_packet_symbol;
+						uint8_t *read_packet_no_of_sent_times;
+
+						cout << read_packet->payload << endl;
+
+						//sscanf(read_packet->payload, "%hhx:%hhx:%hhx:%hhx", read_packet_seq_number,read_packet_ack_number,read_packet_symbol,read_packet_no_of_sent_times);
+
+					/*	cout << "print size before search "<< ack_message_list.size() << endl;
+
+						for (list<message_information>::iterator it = ack_message_list.begin(); it != ack_message_list.end(); it++)
+						{
+							ack_packet = (struct app_packet *) (*it).packet;
+
+							cout << "read_packet symbol is " << read_packet_symbol <<endl;		
+							/*if(ack_packet->symbol==read_packet->symbol)
+							{
+								ack_message_list.erase(it);
+							}*/
+/*						}
+							cout <<"print size after search" << ack_message_list.size()<<endl;
+*/
 						break;
 
 		}
