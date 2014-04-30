@@ -206,13 +206,27 @@ void receive_function()
 	socklen_t len;
 	len = sizeof(nodeaddr);
 	char mesg[BUFLEN];
+
+	message_information send_message;
+	char send_raw_packet[BUFLEN];
+	app_packet *send_packet = (app_packet *)send_raw_packet;
+	struct sockaddr_in send_node_address;
+	char send_servip[20];
+	char send_port[20];	
+	char send_nodename[NAMELEN];
+	char leader_servip[20];
+
+	app_packet *read_packet;
+
 	for(;;)
 	{
 		n = recvfrom(sockfd, mesg, BUFLEN, 0, (SA *)&nodeaddr, &len);
 		message_information message;
 		message.address = nodeaddr;
 		strncpy(message.packet, mesg, strlen(mesg));
-		
+		read_packet = (struct app_packet *)message.packet;
+
+
 		for(int i = 0 ; i < nodelist.size() ; i++)
                 {
                         if(nodelist[i].address.sin_addr.s_addr == message.address.sin_addr.s_addr && nodelist[i].address.sin_port==message.address.sin_port)
@@ -228,6 +242,33 @@ void receive_function()
 		receive_message_queue_mtx.lock();
 		receive_message_queue.push(message);
 		receive_message_queue_mtx.unlock();
+		
+	 				if((read_packet->control_seq!=50) && (read_packet->control_seq!=40))
+					{
+						global_symbol_mtx.lock();
+						if (global_symbol>150)
+						{
+							global_symbol = 1;
+						}
+						global_symbol_mtx.unlock();
+
+
+							memset(&send_raw_packet, 0, sizeof(send_raw_packet));							
+
+							// Sending the ACK
+							send_packet->control_seq = 50;
+							send_packet->seq_number = 100;
+							send_packet->ack_number = read_packet->symbol+1;
+							global_symbol_mtx.lock();
+							send_packet->symbol = global_symbol;
+							global_symbol = global_symbol + 2;
+							global_symbol_mtx.unlock();
+							send_message.address = message.address;
+							send_message.no_of_sent_times = 1;
+							strcpy(send_message.packet, send_raw_packet);
+							//while(sendto(sockfd, send_message.packet, strlen(send_message.packet), 0, (SA *) &send_message.address, sizeof(send_message.address)) < 0);	
+					}
+
 		receive_message_cv.notify_all();
 		memset(mesg, 0, BUFLEN);
 		memset(&message, 0, sizeof(class message_information));
@@ -291,20 +332,7 @@ void parse_function()
 							memset(&send_port, 0, sizeof(send_port));
 							memset(&send_servip, 0, sizeof(send_servip));	
 
-							// Sending the ACK
-							send_packet->control_seq = 50;
-							send_packet->seq_number = 100;
-							send_packet->ack_number = read_packet->symbol+1;
-							global_symbol_mtx.lock();
-							send_packet->symbol = global_symbol;
-							global_symbol = global_symbol + 2;
-							global_symbol_mtx.unlock();
-							send_message.address = read_message.address;
-							send_message.no_of_sent_times = 1;
-							strcpy(send_message.packet, send_raw_packet);
-							while(sendto(sockfd, send_message.packet, strlen(send_message.packet), 0, (SA *) &send_message.address, sizeof(send_message.address)) < 0);	
-
-
+						
 							memset(&send_raw_packet, 0, sizeof(send_raw_packet));							
 
 							// Sending new node information to all nodes
@@ -420,18 +448,6 @@ void parse_function()
 						else if (operating_mode == OTHER)
 						{
 							memset(&send_raw_packet, 0, sizeof(send_raw_packet));							
-							send_packet->control_seq = 50;
-							send_packet->seq_number = 100;
-							send_packet->ack_number = read_packet->symbol+1;
-							global_symbol_mtx.lock();
-							send_packet->symbol = global_symbol;
-							global_symbol = global_symbol + 2;
-							global_symbol_mtx.unlock();
-							send_message.address = read_message.address;
-							send_message.no_of_sent_times = 1;								
-							strcpy(send_message.packet, send_raw_packet);
-							while(sendto(sockfd, send_message.packet, strlen(send_message.packet), 0, (SA *) &send_message.address, sizeof(send_message.address)) < 0);	
-							memset(&send_raw_packet, 0, sizeof(send_raw_packet));							
 					    	send_packet->control_seq = 13;
 							send_packet->seq_number = 100;
 							send_packet->ack_number = 100;
@@ -453,19 +469,7 @@ void parse_function()
 						break;
 
 			case 20:	
-							memset(&send_raw_packet, 0, sizeof(send_raw_packet));							
-							send_packet->control_seq = 50;
-							send_packet->seq_number = 101;
-							send_packet->ack_number = read_packet->symbol+1;
-							global_symbol_mtx.lock();
-							send_packet->symbol = global_symbol;
-							global_symbol = global_symbol + 2;
-							global_symbol_mtx.unlock();
-							send_message.address = read_message.address;
-							send_message.no_of_sent_times = 1;
-							strcpy(send_message.packet, send_raw_packet);
-							while(sendto(sockfd, send_message.packet, strlen(send_message.packet), 0, (SA *) &send_message.address, sizeof(send_message.address)) < 0);	
-
+					
 							if(strcmp(nodelist[0].nodename,username)==0)
 							{	
 							memset(&send_raw_packet, 0, sizeof(send_raw_packet));							
@@ -498,37 +502,12 @@ void parse_function()
 						break;
 
 			case 11:	
-							memset(&send_raw_packet, 0, sizeof(send_raw_packet));							
-							send_packet->control_seq = 50;
-							send_packet->seq_number = 100;
-							send_packet->ack_number = read_packet->symbol+1;
-							global_symbol_mtx.lock();
-							send_packet->symbol = global_symbol;
-							global_symbol = global_symbol + 2;
-							global_symbol_mtx.unlock();
-							send_message.address = read_message.address;
-							send_message.no_of_sent_times = 1;
-							strcpy(send_message.packet, send_raw_packet);
-							while(sendto(sockfd, send_message.packet, strlen(send_message.packet), 0, (SA *) &send_message.address, sizeof(send_message.address)) < 0);	
 							nodelist.clear();
 							//cout << "pointer set to 0" << endl;
 							break;
 
 			case 12:	
-							memset(&send_raw_packet, 0, sizeof(send_raw_packet));							
-							send_packet->control_seq = 50;
-							send_packet->seq_number = 100;
-							send_packet->ack_number = read_packet->symbol+1;
-							send_message.no_of_sent_times = 1;
-							global_symbol_mtx.lock();
-							send_packet->symbol = global_symbol;
-							global_symbol = global_symbol + 2;
-							global_symbol_mtx.unlock();
-							send_message.address = read_message.address;
-							send_message.no_of_sent_times = 1;
-							strcpy(send_message.packet, send_raw_packet);
-							while(sendto(sockfd, send_message.packet, strlen(send_message.packet), 0, (SA *) &send_message.address, sizeof(send_message.address)) < 0);	
-							memset(&send_raw_packet, 0, sizeof(send_raw_packet));							
+								memset(&send_raw_packet, 0, sizeof(send_raw_packet));							
 						
 							node_information node_info;
 							sscanf(read_packet->payload, "%20[^:]:%5s:%s", read_servip, read_port, read_nodename);
@@ -544,21 +523,7 @@ void parse_function()
 							break;
 			
 			case 13:		
-							memset(&send_raw_packet, 0, sizeof(send_raw_packet));							
 						
-							cout <<"sending ack for code 13"<<endl;
-							send_packet->control_seq = 50;
-							send_packet->seq_number = 100;
-							send_packet->ack_number = read_packet->symbol+1;							
-							global_symbol_mtx.lock();
-							send_packet->symbol = global_symbol;
-							global_symbol = global_symbol + 2;
-							global_symbol_mtx.unlock();
-							send_message.address = read_message.address;
-							send_message.no_of_sent_times = 1;
-							strcpy(send_message.packet, send_raw_packet);
-							while(sendto(sockfd, send_message.packet, strlen(send_message.packet), 0, (SA *) &send_message.address, sizeof(send_message.address)) < 0);	
-
 
 							memset(&send_raw_packet, 0, sizeof(send_raw_packet));							
 						sscanf(read_packet->payload, "%20[^:]:%5s:%s", read_servip, read_port, read_nodename);
@@ -616,42 +581,12 @@ void parse_function()
 
 			  case 40:        if(strcmp(nodelist[0].nodename,username)==0)
                                         {
-						 memset(&send_raw_packet, 0, sizeof(send_raw_packet));
-                                                send_packet->control_seq = 50;
-                                                send_packet->seq_number = 100;
-                                                send_packet->ack_number = read_packet->symbol+1;
-                                                global_symbol_mtx.lock();
-                                                send_packet->symbol = global_symbol;
-                                                global_symbol = global_symbol + 2;
-                                                global_symbol_mtx.unlock();
-                                                send_message.address = read_message.address;
-                                                send_message.no_of_sent_times = 1;
-                                                strcpy(send_message.packet, send_raw_packet);
-                                               while(sendto(sockfd, send_message.packet, strlen(send_message.packet), 0, (SA *) &send_message.address, sizeof(send_message.address)) < 0);
-                                                memset(&send_raw_packet, 0, sizeof(send_raw_packet));
+					                           memset(&send_raw_packet, 0, sizeof(send_raw_packet));
 
-                                                /*display_content alive_data;
-                                                strcpy(alive_data.message_contents, read_packet->payload);
-                                                display_message_queue_mtx.lock();
-                                                display_message_queue.push(alive_data);
-                                                display_message_queue_mtx.unlock();
-                                                display_message_cv.notify_all();
-                                                */
+                                           
                                         }
                                         else
                                         {
-                                                 memset(&send_raw_packet, 0, sizeof(send_raw_packet));
-                                                send_packet->control_seq = 50;
-                                                send_packet->seq_number = 100;
-                                                send_packet->ack_number = read_packet->symbol+1;
-                                                global_symbol_mtx.lock();
-                                                send_packet->symbol = global_symbol;
-                                                global_symbol = global_symbol + 2;
-                                                global_symbol_mtx.unlock();
-                                                send_message.address = read_message.address;
-                                                send_message.no_of_sent_times = 1;
-                                                strcpy(send_message.packet, send_raw_packet);
-                                               while(sendto(sockfd, send_message.packet, strlen(send_message.packet), 0, (SA *) &send_message.address, sizeof(send_message.address)) < 0);
                                                 memset(&send_raw_packet, 0, sizeof(send_raw_packet));
 
 						message_information message;
@@ -681,18 +616,6 @@ void parse_function()
 
 			case 60:        if(strcmp(nodelist[0].nodename,username)!=0)
                                         {
-						 memset(&send_raw_packet, 0, sizeof(send_raw_packet));
-                                                send_packet->control_seq = 50;
-                                                send_packet->seq_number = 100;
-                                                send_packet->ack_number = read_packet->symbol+1;
-                                                global_symbol_mtx.lock();
-                                                send_packet->symbol = global_symbol;
-                                                global_symbol = global_symbol + 2;
-                                                global_symbol_mtx.unlock();
-                                                send_message.address = read_message.address;
-                                                send_message.no_of_sent_times = 1;
-                                                strcpy(send_message.packet, send_raw_packet);                                                
-                                               while(sendto(sockfd, send_message.packet, strlen(send_message.packet), 0, (SA *) &send_message.address, sizeof(send_message.address)) < 0);                                           
 						memset(&send_raw_packet, 0, sizeof(send_raw_packet));
 
                                         int position = -1;
@@ -740,35 +663,12 @@ void parse_function()
 		 	case 70:        if(strcmp(nodelist[0].nodename,username)==0)
                                         {
                                                 //cout<<"I don't care, everyone knows I am the leader"<<endl;
-                                        	memset(&send_raw_packet, 0, sizeof(send_raw_packet));
-						send_packet->control_seq = 50;
-						send_packet->seq_number = 100;
-						send_packet->ack_number = read_packet->symbol+1;
-						global_symbol_mtx.lock();
-						send_packet->symbol = global_symbol;
-						global_symbol = global_symbol + 2;
-						global_symbol_mtx.unlock();
-						send_message.address = read_message.address;
-						send_message.no_of_sent_times = 1;
-						strcpy(send_message.packet, send_raw_packet);
-						while(sendto(sockfd, send_message.packet, strlen(send_message.packet), 0, (SA *) &send_message.address, sizeof(send_message.address)) < 0);	
-					}
+                    }
                                         else
                                         {
                                                 //cout<<"I am king of the world!!!"<<endl;
 						memset(&send_raw_packet, 0, sizeof(send_raw_packet));
-                                                send_packet->control_seq = 50;
-                                                send_packet->seq_number = 100;
-                                                send_packet->ack_number = read_packet->symbol+1;
-                                                global_symbol_mtx.lock();
-                                                send_packet->symbol = global_symbol;
-                                                global_symbol = global_symbol + 2;
-                                                global_symbol_mtx.unlock();
-                                                send_message.address = read_message.address;
-                                                send_message.no_of_sent_times = 1;
-                                                strcpy(send_message.packet, send_raw_packet); 
-                                               while(sendto(sockfd, send_message.packet, strlen(send_message.packet), 0, (SA *) &send_message.address, sizeof(send_message.address)) < 0);
-
+                 
 
                                                 opmode_mtx.lock();
                                                 operating_mode == LEADER;
@@ -859,7 +759,7 @@ void ack_function()
 					it = ack_message_list.erase(it);
 				}
 
-				else if (((*it).no_of_sent_times<=3) && ((time(0) - (*it).last_sent_time) > 1))
+				else if (((*it).no_of_sent_times<=3) && ((time(0) - (*it).last_sent_time) > 10))
 				{
 					ack_message = ack_message_list.front();
 					ack_message.no_of_sent_times = ack_message.no_of_sent_times + 1;
