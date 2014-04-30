@@ -854,7 +854,7 @@ void ack_function()
 			{
 
 
-				if (((*it).no_of_sent_times>3))
+				if (((*it).no_of_sent_times>0))
 				{
 					it = ack_message_list.erase(it);
 				}
