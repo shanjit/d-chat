@@ -160,6 +160,11 @@ mutex leader_seq_number_mtx;
 uint8_t old_leader_seq_number;
 
 
+struct sockaddr_in new_leader_address;
+struct sockaddr_in old_leader_address;
+uint8_t leader_election;
+mutex leader_election_mtx;
+
 //----------------------------------------------------------------------------------------//
 
 // --- thread handling sending of data --- //
@@ -180,6 +185,11 @@ void send_function()
 		send_message = send_message_queue.front();
 		send_message_queue.pop();
 		send_lk_send.unlock();
+
+/*		cout << "SEnd message no of no_of_sent_times " ;
+		printf("no_of_sent_times %d\n", send_message.no_of_sent_times);
+*/
+
 
 		// Send the message
 		while(sendto(sockfd, send_message.packet, strlen(send_message.packet), 0, (SA *) &send_message.address, sizeof(send_message.address)) < 0);
@@ -243,7 +253,7 @@ void receive_function()
 		receive_message_queue.push(message);
 		receive_message_queue_mtx.unlock();
 		
-	 				if((read_packet->control_seq!=50) && (read_packet->control_seq!=40))
+	 				if((read_packet->control_seq!=50))
 					{
 						global_symbol_mtx.lock();
 						if (global_symbol>150)
@@ -266,7 +276,7 @@ void receive_function()
 							send_message.address = message.address;
 							send_message.no_of_sent_times = 1;
 							strcpy(send_message.packet, send_raw_packet);
-							//while(sendto(sockfd, send_message.packet, strlen(send_message.packet), 0, (SA *) &send_message.address, sizeof(send_message.address)) < 0);	
+							while(sendto(sockfd, send_message.packet, strlen(send_message.packet), 0, (SA *) &send_message.address, sizeof(send_message.address)) < 0);	
 					}
 
 		receive_message_cv.notify_all();
@@ -589,8 +599,8 @@ void parse_function()
                                         {
                                                 memset(&send_raw_packet, 0, sizeof(send_raw_packet));
 
-						message_information message;
-                                                char raw_packet[BUFLEN];
+/*						message_information message;
+                        char raw_packet[BUFLEN];
                                                 app_packet *packet = (app_packet *)raw_packet;
                                                 struct sockaddr_in node_address;
                                                 memset(raw_packet, 0, BUFLEN);
@@ -610,11 +620,12 @@ void parse_function()
                                                 send_message_queue_mtx.lock();
                                                 send_message_queue.push(message);
                                                 send_message_queue_mtx.unlock();
-                                                send_message_cv.notify_all();
+                                                send_message_cv.notify_all();*/
                                         }
                                         break;
 
-			case 60:        if(strcmp(nodelist[0].nodename,username)!=0)
+			case 60:    //  To remove any dead node from the list  
+						if(strcmp(nodelist[0].nodename,username)!=0)
                                         {
 						memset(&send_raw_packet, 0, sizeof(send_raw_packet));
 
@@ -623,8 +634,8 @@ void parse_function()
                                         for(int i = 0 ; i < nodelist.size() ; i++)
                                         {
                                                 nodelist_mtx.lock();
-						nodelist[i].last_active = time(NULL);
-						nodelist_mtx.unlock();
+										nodelist[i].last_active = time(NULL);
+									nodelist_mtx.unlock();
 
 						if(strcmp(nodelist[i].nodename,read_packet->payload)==0)
                                                 {
@@ -636,6 +647,7 @@ void parse_function()
 
                                         if (position > 0)
                                         {
+                                        		// removing a crashed node from the nodelist
                                                 nodelist_mtx.lock();
                                                 nodelist.erase(nodelist.begin()+position); // remove crashed member from node list
                                                 nodelist_mtx.unlock();
@@ -647,20 +659,29 @@ void parse_function()
 
                                                 nodelist_mtx.lock();
                                                 nodelist[1].last_active = time(NULL);
+                                                leader_election_mtx.lock();
+                                                leader_election = 1;
+                                                old_leader_address = nodelist[0].address;
+                                                leader_election_mtx.unlock();
+
                                                 nodelist.erase(nodelist.begin()+position);
                                                 nodelist_mtx.unlock();
                                         }
 
                                         display_content crashed_data;
-                                        sprintf(crashed_data.message_contents,"NOTICE %s has left or crashed",read_packet->payload);
+                                        sprintf(crashed_data.message_contents,"NOTICE %s has left or crashed here",read_packet->payload);
                                         display_message_queue_mtx.lock();
                                         display_message_queue.push(crashed_data);
                                         display_message_queue_mtx.unlock();
                                         display_message_cv.notify_all();
                                         }
+
+                                 
                                         break;
 
-		 	case 70:        if(strcmp(nodelist[0].nodename,username)==0)
+		 	case 70:	// Give a 70 to the old_node to become     
+
+		 	if(strcmp(nodelist[0].nodename,username)==0)
                                         {
                                                 //cout<<"I don't care, everyone knows I am the leader"<<endl;
                     }
@@ -696,18 +717,18 @@ void parse_function()
                                                         packet1->ack_number = 100;
          						                                              	
 	
-							memset(packet1->payload, 0, sizeof(packet1->payload));
+														memset(packet1->payload, 0, sizeof(packet1->payload));
                                                         sprintf(packet1->payload,"%s",nodelist[0].nodename);
 
                                                         for(int i = 2 ; i < nodelist.size() ; i++)
                                                         {
-                                                                global_symbol_mtx.lock();
-								packet1->symbol = global_symbol;
-								global_symbol = global_symbol + 2;
-								global_symbol_mtx.unlock();
-								crash_message.no_of_sent_times = 1;
+                                                            global_symbol_mtx.lock();
+															packet1->symbol = global_symbol;
+															global_symbol = global_symbol + 2;
+															global_symbol_mtx.unlock();
+															crash_message.no_of_sent_times = 1;
 
-								crash_message.address = nodelist[i].address;
+															crash_message.address = nodelist[i].address;
                                                                 strncpy(crash_message.packet, raw_packet1, strlen(raw_packet1));
                                                                 //cout<<crash_message.packet<<endl;
                                                                 send_message_queue_mtx.lock();
@@ -721,7 +742,14 @@ void parse_function()
                                                                 nodelist_mtx.unlock();
                                                         }
 							nodelist_mtx.lock();
+
+                                                        leader_election_mtx.lock();
+                                                        leader_election = 1;
+                                                        old_leader_address = nodelist[0].address;
+                                                        leader_election_mtx.unlock();
                                                         nodelist.erase(nodelist.begin()+0); // remove crashed member from node list
+
+
                                                         nodelist_mtx.unlock();
                                                 }
 
@@ -754,20 +782,33 @@ void ack_function()
 			{
 
 
-				if (((*it).no_of_sent_times>0))
+				if (((*it).no_of_sent_times>3))
 				{
 					it = ack_message_list.erase(it);
 				}
 
-				else if (((*it).no_of_sent_times<=3) && ((time(0) - (*it).last_sent_time) > 10))
+				else if (((*it).no_of_sent_times<=3) && ((time(0) - (*it).last_sent_time) > 5))
 				{
 					ack_message = ack_message_list.front();
 					ack_message.no_of_sent_times = ack_message.no_of_sent_times + 1;
-					it = ack_message_list.erase(it);
+					leader_election_mtx.lock();
+					if (leader_election != 0)
+					{
+			if ((ack_message.address.sin_port == old_leader_address.sin_port))
+			{	
+				//cout << "chanding address";
+				ack_message.address = nodelist[0].address;
+			}
+			leader_election = 0;
+		}
+		leader_election_mtx.unlock();
+
+
 					send_message_queue_mtx.lock();
 					send_message_queue.push(ack_message);
 					send_message_queue_mtx.unlock();
 					send_message_cv.notify_all();
+					it = ack_message_list.erase(it);
 				}
 
 
@@ -833,11 +874,11 @@ void heartbeat_function()
 					memset(packet1->payload, 0, sizeof(packet1->payload));
                                         strcpy(packet1->payload,nodelist[i].nodename);
 
-                                        //cout<<"Deleting "<<nodelist[i].nodename<<endl;
+                                /*        //cout<<"Deleting "<<nodelist[i].nodename<<endl;
                                         nodelist_mtx.lock();
                                         nodelist.erase(nodelist.begin()+i); // remove crashed member from node list
                                         nodelist_mtx.unlock();
-					
+					*/
 
 					display_content crashed_data;
                                         sprintf(crashed_data.message_contents,"NOTICE %s has left or crashed",packet1->payload);
@@ -847,7 +888,7 @@ void heartbeat_function()
                                         display_message_cv.notify_all();
 
 					//cout<<"Packet: "<<raw_packet1<<endl;
-                                        for(int i = 1 ; i < nodelist.size() ; i++)
+                                        for(int i = 0 ; i < nodelist.size() ; i++)
                                         {
                                                 crash_message.address = nodelist[i].address;
                                                 strncpy(crash_message.packet, raw_packet1, strlen(raw_packet1));
@@ -945,6 +986,7 @@ void user_function()
 		send_message_queue_mtx.unlock();
 		send_message_cv.notify_all();
 		memset(chat_message, 0, 256);
+		
 	}
 }
 
